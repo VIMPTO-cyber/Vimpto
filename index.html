@@ -2139,7 +2139,7 @@ async function submitDepositProof(file) {
     // au lieu de refuser immédiatement le clic si le module n'a pas fini de démarrer.
     const bridgeDeadline = Date.now() + 15000;
     while ((!window.ensureFirebaseClientReady || !window.syncDepositToFirebase ||
-            !window.uploadDepositProof || !window.fbAuth) && Date.now() < bridgeDeadline) {
+            !window.fbAuth) && Date.now() < bridgeDeadline) {
       await new Promise(resolve => setTimeout(resolve, 250));
     }
     if (typeof window.ensureFirebaseClientReady === "function") {
@@ -2152,7 +2152,7 @@ async function submitDepositProof(file) {
     console.warn("Préparation session Firebase dépôt:", err);
   }
   if (!sessionReady || !window.fbAuth?.currentUser || !window.isFirebaseReady?.() || adminMode ||
-      typeof window.syncDepositToFirebase !== "function" || typeof window.uploadDepositProof !== "function") {
+      typeof window.syncDepositToFirebase !== "function") {
     const message = sessionError?.message ||
       "Connexion Firebase non initialisée. Vérifiez Internet, attendez quelques secondes puis réessayez.";
     toast(message);
@@ -2164,15 +2164,17 @@ async function submitDepositProof(file) {
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi en cours…"; }
   setDepositSending(true);
   const depositId = "dep_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  let proofUrl = "";
+  let proofData = "";
   try {
     depositStatus("Préparation de la capture…");
     const blob = await withTimeout(compressProofImage(file), 30000, "Lecture de l’image trop longue. Choisissez une autre capture.");
-    // Stocker l'image dans Firebase Storage, puis ne conserver que son URL dans Firestore.
-    // Cela évite de gonfler le document Firestore avec une image encodée en base64.
-    depositStatus("Envoi de la preuve…");
-    proofUrl = await withTimeout(window.uploadDepositProof(depositId, blob), 45000,
-      "Envoi de la photo trop long. Vérifiez Internet puis réessayez.");
+    // Firestore uniquement : la capture compressée est encodée en data URL.
+    // La limite laisse une marge sous la taille maximale d’un document Firestore.
+    depositStatus("Préparation de la preuve pour Firestore…");
+    proofData = await withTimeout(blobToDataURL(blob), 30000, "Lecture de la capture trop longue. Réessayez.");
+    if (proofData.length > 650000) {
+      throw new Error("Capture trop volumineuse pour Firestore. Choisissez une capture plus légère.");
+    }
   } catch (err) {
     console.error("Préparation capture:", err);
     const detail = err?.code || err?.message || "réessayez";
@@ -2190,11 +2192,11 @@ async function submitDepositProof(file) {
     recipientName: "Vinto",
     recipientPhone: getPayNumberForMethod(pendingDeposit.method),
     phone: pendingDeposit.phone, country: pendingDeposit.country,
-    ref: "À vérifier par l’administrateur", status: "En attente", created: Date.now(), proofUrl
+    ref: "À vérifier par l’administrateur", status: "En attente", created: Date.now()
   };
   try {
-    // Enregistrer la demande dans Firestore avec le lien de la capture d’écran.
-    await window.syncDepositToFirebase(baseRecord);
+    // Enregistrer la demande et la preuve directement dans Firestore (sans Firebase Storage).
+    await window.syncDepositToFirebase(baseRecord, proofData);
     state.deposits = state.deposits.filter(x => x.id !== depositId);
     state.deposits.push(baseRecord);
     try { save(); } catch (_) {}
@@ -4162,15 +4164,7 @@ document.getElementById("logoutBtn").addEventListener("click", async (e) => {
   toast("Déconnexion effectuée.");
 }, true);
 
-// Ne plus bloquer l’UI : la preuve est déjà enregistrée localement.
-// On tente seulement une synchro Firebase en arrière-plan.
-window.uploadDepositProof = async function(depositId, blob) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Session Firebase client indisponible.");
-  const r = storageRef(storage, "deposit-proofs/" + user.uid + "/" + depositId + ".jpg");
-  await uploadBytes(r, blob, { contentType: "image/jpeg" });
-  return await getDownloadURL(r);
-};
+// Envoi Firestore uniquement : aucune dépendance à Firebase Storage pour les dépôts.
 window.syncDepositToFirebase = async function(record, proofData) {
   const user = auth.currentUser;
   if (!user || !firebaseReady || adminMode) throw new Error("Session Firebase client indisponible.");
@@ -4179,7 +4173,7 @@ window.syncDepositToFirebase = async function(record, proofData) {
     id: depositId, userId: user.uid, amount: Number(record.amount),
     method: record.method || "Paiement", paymentLink: record.paymentLink || "",
     phone: record.phone || "", country: record.country || "",
-    ref: record.ref || "À vérifier par l’administrateur", proofUrl: record.proofUrl || "",
+    ref: record.ref || "À vérifier par l’administrateur",
     ...(proofData ? { proof: proofData } : {}),
     status: "En attente", created: record.created || Date.now()
   };
