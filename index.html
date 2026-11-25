@@ -2135,17 +2135,26 @@ async function submitDepositProof(file) {
   let sessionReady = false;
   let sessionError = null;
   try {
-    sessionReady = typeof window.ensureFirebaseClientReady === "function"
-      ? await window.ensureFirebaseClientReady()
-      : !!(window.fbAuth?.currentUser && window.isFirebaseReady?.() && !adminMode);
+    // Les modules Firebase sont chargés de façon asynchrone : attendre leur pont
+    // au lieu de refuser immédiatement le clic si le module n'a pas fini de démarrer.
+    const bridgeDeadline = Date.now() + 15000;
+    while ((!window.ensureFirebaseClientReady || !window.syncDepositToFirebase ||
+            !window.uploadDepositProof || !window.fbAuth) && Date.now() < bridgeDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    if (typeof window.ensureFirebaseClientReady === "function") {
+      sessionReady = await window.ensureFirebaseClientReady();
+    } else {
+      sessionReady = !!(window.fbAuth?.currentUser && window.isFirebaseReady?.() && !adminMode);
+    }
   } catch (err) {
     sessionError = err;
     console.warn("Préparation session Firebase dépôt:", err);
   }
   if (!sessionReady || !window.fbAuth?.currentUser || !window.isFirebaseReady?.() || adminMode ||
-      typeof window.syncDepositToFirebase !== "function") {
+      typeof window.syncDepositToFirebase !== "function" || typeof window.uploadDepositProof !== "function") {
     const message = sessionError?.message ||
-      "Session Firebase non prête. Vérifiez Internet, reconnectez-vous puis réessayez.";
+      "Connexion Firebase non initialisée. Vérifiez Internet, attendez quelques secondes puis réessayez.";
     toast(message);
     const st = document.getElementById("depositSendStatus");
     if (st) st.textContent = message + " Aucune preuve n’a été envoyée.";
@@ -2155,11 +2164,15 @@ async function submitDepositProof(file) {
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi en cours…"; }
   setDepositSending(true);
   const depositId = "dep_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  let proofUrl = "", proofData = "";
+  let proofUrl = "";
   try {
     depositStatus("Préparation de la capture…");
     const blob = await withTimeout(compressProofImage(file), 30000, "Lecture de l’image trop longue. Choisissez une autre capture.");
-    proofData = await blobToDataURL(blob);
+    // Stocker l'image dans Firebase Storage, puis ne conserver que son URL dans Firestore.
+    // Cela évite de gonfler le document Firestore avec une image encodée en base64.
+    depositStatus("Envoi de la preuve…");
+    proofUrl = await withTimeout(window.uploadDepositProof(depositId, blob), 45000,
+      "Envoi de la photo trop long. Vérifiez Internet puis réessayez.");
   } catch (err) {
     console.error("Préparation capture:", err);
     const detail = err?.code || err?.message || "réessayez";
@@ -2181,7 +2194,7 @@ async function submitDepositProof(file) {
   };
   try {
     // Enregistrer la demande dans Firestore avec le lien de la capture d’écran.
-    await window.syncDepositToFirebase(baseRecord, proofData);
+    await window.syncDepositToFirebase(baseRecord);
     state.deposits = state.deposits.filter(x => x.id !== depositId);
     state.deposits.push(baseRecord);
     try { save(); } catch (_) {}
@@ -4713,12 +4726,12 @@ onAuthStateChanged(auth, async (user) => {
     function buildFlight(c, out, t) {
       var g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + 0.8); g.connect(out);
       var n = c.createBufferSource(), bp = c.createBiquadFilter(), ng = c.createGain();
-      n.buffer = nb || mkNoise(c); n.loop = true; bp.type = "bandpass"; bp.frequency.value = 700; bp.Q.value = 0.6; ng.gain.value = 0.2;
+      n.buffer = nb || mkNoise(c); n.loop = true; bp.type = "bandpass"; bp.frequency.value = 700; bp.Q.value = 0.6; ng.gain.value = 0.32;
       n.connect(bp); bp.connect(ng); ng.connect(g);
       var o1 = c.createOscillator(), o2 = c.createOscillator(), lp = c.createBiquadFilter(), og = c.createGain();
-      o1.type = o2.type = "sawtooth"; o1.frequency.value = 95; o2.frequency.value = 96.5; lp.type = "lowpass"; lp.frequency.value = 520; og.gain.value = 0.085;
+      o1.type = o2.type = "sawtooth"; o1.frequency.value = 95; o2.frequency.value = 96.5; lp.type = "lowpass"; lp.frequency.value = 520; og.gain.value = 0.13;
       o1.connect(lp); o2.connect(lp); lp.connect(og); og.connect(g);
-      var o3 = c.createOscillator(), wg = c.createGain(); o3.type = "sine"; o3.frequency.value = 900; wg.gain.value = 0.016; o3.connect(wg); wg.connect(g);
+      var o3 = c.createOscillator(), wg = c.createGain(); o3.type = "sine"; o3.frequency.value = 900; wg.gain.value = 0.028; o3.connect(wg); wg.connect(g);
       n.start(t); o1.start(t); o2.start(t); o3.start(t);
       return { g: g, n: n, bp: bp, lp: lp, o1: o1, o2: o2, o3: o3 };
     }
@@ -4728,7 +4741,7 @@ onAuthStateChanged(auth, async (user) => {
       var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
       try { ctx = new AC(); } catch (_) { return null; }
       var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
-      master = ctx.createGain(); master.gain.value = muted ? 0 : 0.85; master.connect(comp); comp.connect(ctx.destination);
+      master = ctx.createGain(); master.gain.value = muted ? 0 : 1.35; master.connect(comp); comp.connect(ctx.destination);
       nb = mkNoise(ctx); return ctx;
     }
     function unlock() {
@@ -4766,7 +4779,7 @@ onAuthStateChanged(auth, async (user) => {
     }
     function setMuted(v) {
       muted = !!v; try { localStorage.setItem("vintoMute", muted ? "1" : "0"); } catch (_) {}
-      if (master) master.gain.setTargetAtTime(muted ? 0 : 0.85, ctx.currentTime, 0.03);
+      if (master) master.gain.setTargetAtTime(muted ? 0 : 1.35, ctx.currentTime, 0.03);
       if (muted) flightStop();
       document.querySelectorAll(".vx-snd").forEach(function (b) { b.classList.toggle("off", muted); b.textContent = muted ? "🔇" : "🔊"; b.setAttribute("aria-pressed", muted ? "true" : "false"); });
     }
