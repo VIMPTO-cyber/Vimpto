@@ -566,7 +566,7 @@
         </div>
         <div class="faq-item" data-cat="parrain">
           <button type="button" class="faq-q">Comment fonctionne le parrainage ?</button>
-          <div class="faq-a">Chaque membre dispose d’un code unique et d’un lien personnel (https://unitry29574.github.io/Vinto/?ref=VOTRE_CODE). Quand un filleul ouvre ce lien, le formulaire d’inscription affiche automatiquement votre code et votre numéro de téléphone (parrain). Commissions : 30 % (N1), 3 % (N2), 2 % (N3) sur les investissements de votre équipe.</div>
+          <div class="faq-a">Chaque membre dispose d’un code unique et d’un lien personnel (https://vimpto-cyber.github.io/Vimpto/?ref=VOTRE_CODE). Quand un filleul ouvre ce lien, le formulaire d’inscription affiche automatiquement votre code et votre numéro de téléphone (parrain). Commissions : 30 % (N1), 3 % (N2), 2 % (N3) sur les investissements de votre équipe.</div>
         </div>
         <div class="faq-item" data-cat="parrain">
           <button type="button" class="faq-q">Où voir mes filleuls et mon code ?</button>
@@ -701,7 +701,7 @@
         <!-- RÉGLAGE DE LA DIFFICULTÉ : tout en haut du tableau administrateur -->
         <div style="background:#0d121b;border:1px solid #3b4659;border-radius:14px;padding:14px;margin:0 0 16px">
           <b style="display:block;margin-bottom:8px">🎮 Difficulté des jeux (Aviator + Penalty)</b>
-          <p class="small" style="margin:0 0 10px;color:#aeb9cb">Réglage serveur : s'applique à tous les téléphones, pour Aviator et Penalty, dès le prochain vol / la prochaine partie.<br>🟢 <b>Facile</b> : le joueur récupère ≈ 96 % de ses mises, gros multiplicateurs possibles (Aviator jusqu'à ×100).<br>🟡 <b>Normal</b> : ≈ 90 %, Aviator plafonné à ×10, gains modérés.<br>🔴 <b>Difficile</b> : ≈ 78 %, Aviator plafonné à ×3, on peut gagner mais difficilement (Penalty : 40 % de chances au 1er tir).</p>
+          <p class="small" style="margin:0 0 10px;color:#aeb9cb">Réglage serveur : s'applique à tous les téléphones, pour Aviator et Penalty, dès le prochain vol / la prochaine partie.<br>Choisis un niveau : 🟢 Facile, 🟡 Normal ou 🔴 Difficile.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
             <button type="button" class="secondary vinto-diff-btn" data-diff="easy" id="diffBtnEasy" onclick="setVintoGameDifficulty('easy',this)" style="min-height:48px">🟢 Facile</button>
             <button type="button" class="secondary vinto-diff-btn" data-diff="normal" id="diffBtnNormal" onclick="setVintoGameDifficulty('normal',this)" style="min-height:48px">🟡 Normal</button>
@@ -1240,7 +1240,7 @@ window.ADMIN_EMAIL = ADMIN_EMAIL;
 if (typeof window.adminMode === "undefined") window.adminMode = false;
 
 // Photos plans stylées (Wikimedia Commons — licences libres)
-const REF_SITE = "https://unitry29574.github.io/Vinto/";
+const REF_SITE = "https://vimpto-cyber.github.io/Vimpto/";
 const PREMIUM_ROBOT_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const ROBOT_IMGS = [
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
@@ -2538,7 +2538,7 @@ function renderAll() {
   document.getElementById("myCode").textContent = current.code;
   const refLinkEl = document.getElementById("myRefLink");
   if (refLinkEl) {
-    const base = (typeof REF_SITE !== "undefined" ? REF_SITE : "https://unitry29574.github.io/Vinto/").replace(/\/?$/, "/");
+    const base = (typeof REF_SITE !== "undefined" ? REF_SITE : "https://vimpto-cyber.github.io/Vimpto/").replace(/\/?$/, "/");
     const code = current.code || "";
     const tel = (current.phone || "").replace(/\s+/g, "");
     let link = base + "?ref=" + encodeURIComponent(code);
@@ -5845,7 +5845,7 @@ onAuthStateChanged(auth, async (user) => {
   /* ------------------------------------------------------------------
      7. Admin (difficulté + statistiques) — réglage serveur, valable pour tous
      ------------------------------------------------------------------ */
-  var DIFF_LABELS = { easy: "Facile · retour joueur ≈ 96 % · on gagne très facilement · Aviator jusqu’à ×100", normal: "Normal · ≈ 90 % · Aviator jusqu’à ×10", hard: "Difficile · ≈ 78 % · Aviator jusqu’à ×3 · gagner est difficile" };
+  var DIFF_LABELS = { easy: "Facile", normal: "Normal", hard: "Difficile" };
   function syncDifficultyButtons(d) {
     if (!d) return;
     var map = { easy: "diffBtnEasy", normal: "diffBtnNormal", hard: "diffBtnHard" };
