@@ -2250,6 +2250,7 @@ async function submitDepositProof(file) {
   if (!okImg) { depositStatus("Ce fichier n’est pas une image. Choisissez la capture d’écran du paiement."); toast("Choisissez une image."); return; }
   // La restauration de session Firebase peut finir après l'ouverture de l'écran.
   // On vérifie/répare la session avant de bloquer l'envoi.
+  const isAdminNow = (window.fbAuth?.currentUser?.email || "").toLowerCase() === String(window.ADMIN_EMAIL_FIREBASE || "").toLowerCase();
   let sessionReady = false;
   let sessionError = null;
   try {
@@ -2263,13 +2264,13 @@ async function submitDepositProof(file) {
     if (typeof window.ensureFirebaseClientReady === "function") {
       sessionReady = await window.ensureFirebaseClientReady();
     } else {
-      sessionReady = !!(window.fbAuth?.currentUser && window.isFirebaseReady?.() && !adminMode);
+      sessionReady = !!(window.fbAuth?.currentUser && window.isFirebaseReady?.() && !isAdminNow);
     }
   } catch (err) {
     sessionError = err;
     console.warn("Préparation session Firebase dépôt:", err);
   }
-  if (!sessionReady || !window.fbAuth?.currentUser || !window.isFirebaseReady?.() || adminMode ||
+  if (!sessionReady || !window.fbAuth?.currentUser || !window.isFirebaseReady?.() || isAdminNow ||
       typeof window.syncDepositToFirebase !== "function") {
     const message = sessionError?.message ||
       "Connexion Firebase non initialisée. Vérifiez Internet, attendez quelques secondes puis réessayez.";
@@ -3730,7 +3731,7 @@ async function loadOwnData(user) {
     try { saveLocalState(); } catch(_){}
   } catch (e) { console.warn("merge local", e); }
   current = state.users[0];
-  firebaseReady = true;
+  firebaseReady = true; adminMode = false; window.adminMode = false; window.adminOpen = false;
   try { window.loadMyReferrals && window.loadMyReferrals(); } catch (_) {}
   document.getElementById("sessionPill").textContent = "Vinto";
   enter(current);
@@ -4335,7 +4336,7 @@ document.getElementById("logoutBtn").addEventListener("click", async (e) => {
   if (!auth.currentUser) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  current = null; adminMode = false; firebaseReady = false;
+  current = null; adminMode = false; firebaseReady = false; window.adminMode = false; window.adminOpen = false;
   await signOut(auth);
   document.body.classList.add("auth-mode");
   document.getElementById("auth").classList.remove("hidden");
