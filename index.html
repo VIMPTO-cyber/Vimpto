@@ -65,6 +65,10 @@
 .pn-keeper .kring,.pn-keeper .kspark{position:absolute;pointer-events:none;z-index:4}
 .pn-keeper .kring{width:16%;aspect-ratio:1;margin-left:-8%;border:3px solid #fff;border-radius:50%}
 .pn-keeper .kspark{font-size:16px;margin-left:-8px;line-height:1}
+.pn-scene .pn-kicker{position:absolute;left:57%;bottom:0;width:11%;z-index:4;pointer-events:none}
+.pn-kicker svg{display:block;width:100%;height:auto;overflow:visible}
+.pn-scene .pn-fx{position:absolute;z-index:7;pointer-events:none;font-size:18px;line-height:1;margin:-9px 0 0 -9px}
+.pn-scene .pn-ghost{pointer-events:none;filter:blur(1px) brightness(1.2)}
 </style>
 </head>
 <body>
@@ -5120,7 +5124,7 @@ onAuthStateChanged(auth, async (user) => {
 
   /* ===== Gardien v3 : 26 poses, pieds au sol, animations visibles, sons ===== */
   var KP = (function () {
-    var DIR = { 4: 1, 5: 1, 6: -1, 7: -1, 8: -1, 13: -1, 15: -1, 16: -1, 18: -1, 19: 1 }, T = [], X = [26, 50, 74], BY = [82.7, 51.2, 25.6];
+    var GI = null, POOL = [[[3, 4], [3, 10]], [[13, 15, 5], [11, 12]], [[6, 7, 16], [9, 17]]], DIR = { 3: 1, 4: 1, 5: 1, 6: -1, 7: -1, 8: -1, 13: -1, 15: -1, 16: -1, 18: -1, 19: 1 }, T = [], X = [26, 50, 74], BY = [82.7, 51.2, 25.6];
     function A(a, d, loop, e) { return [a.map(function (t, i) { return { transform: t, offset: i / (a.length - 1) }; }), { duration: d, iterations: loop ? Infinity : 1, fill: "forwards", easing: e || "ease-out" }]; }
     var E = {
       0: A(["translate(-5%,0) scaleY(1)", "translate(5%,-2%) scaleY(1.02)", "translate(-5%,0) scaleY(1)"], 1400, 1, "ease-in-out"),
@@ -5160,7 +5164,8 @@ onAuthStateChanged(auth, async (user) => {
       e.animate([{ transform: "translate(0,0) rotate(0) scale(1)", filter: sh }, { transform: "translate(" + v[0] + "%," + v[1] + "%) rotate(" + v[2] + "deg) scale(" + v[3] + ")", filter: "drop-shadow(0 0 11px " + v[5] + ") " + sh }], { duration: v[4], iterations: Infinity, direction: "alternate", easing: "ease-in-out" });
     }
     function all(kp) { return kp.querySelectorAll(".kz:not(.ghost)"); }
-    function stop() { while (T.length) clearTimeout(T.pop()); }
+    function guardStop() { if (GI) { clearInterval(GI); GI = null; } }
+    function stop() { guardStop(); while (T.length) clearTimeout(T.pop()); }
     function later(f, ms) { T.push(setTimeout(f, ms)); }
     function clean(kp) { Array.prototype.forEach.call(kp.querySelectorAll(".ghost,.kring,.kspark"), function (n) { n.parentNode.removeChild(n); }); }
     function ring(kp, x, cy, col) {
@@ -5178,19 +5183,24 @@ onAuthStateChanged(auth, async (user) => {
       }
     }
     // cy = hauteur voulue du centre de la pose (en % de la zone du gardien) ; sans cy, les pieds sont au sol
-    function show(kp, k, side, cy, noAnim, def) {
+    function show(kp, k, side, cy, noAnim, def, opt) {
       var i, els, e, d = DIR[k] || 0, g = kp.querySelectorAll(".ghost");
       for (i = 0; i < g.length; i++) g[i].parentNode.removeChild(g[i]);
       els = all(kp); e = kp.querySelector('.kz[data-k="' + k + '"]');
       for (i = 0; i < els.length; i++) { els[i].classList.remove("on"); if (els[i].getAnimations) els[i].getAnimations().forEach(function (x) { x.cancel(); }); }
-      e.style.scale = (d && side && d !== side) ? "-1 1" : "1 1";
+      e.style.scale = (d && side && d !== side) ? "-1 1" : "1 1"; if (opt && opt.flip) e.style.scale = opt.flip < 0 ? "-1 1" : "1 1";
       e.style.left = X[side + 1] + "%"; e.style.bottom = "0%"; e.classList.add("on");
       if (cy != null) { var H = kp.clientHeight || 1, hs = e.offsetWidth * (e.naturalHeight / (e.naturalWidth || 1)) / H * 100; e.style.bottom = Math.max(0, Math.min(cy - hs / 2, 100 - hs)) + "%"; }
       if (!def) kp.setAttribute("data-act", "1");
       if (!noAnim && e.animate) { var an = e.animate(E[k][0], E[k][1]); an.onfinish = function () { if (e.classList.contains("on")) life(e, k); }; }
       return e;
     }
-    function sync(kp, st) { if (kp.hasAttribute("data-act")) return; show(kp, st === "ready" ? 2 : st === "shooting" ? 1 : 0, 0, null, 0, 1); }
+    function guardStart(kp) {
+      var seq = [[1, 0], [2, -1], [1, 0], [2, 1]], i = 0; guardStop();
+      function step() { if (kp.hasAttribute("data-act")) { guardStop(); return; } var q = seq[i++ % 4]; show(kp, q[0], 0, null, 0, 1, q[1] ? { flip: q[1] } : null); }
+      step(); GI = setInterval(step, 800);
+    }
+    function sync(kp, st) { guardStop(); if (kp.hasAttribute("data-act")) return; if (st === "ready") guardStart(kp); else show(kp, st === "shooting" ? 1 : 0, 0, null, 0, 1); }
     function cur() { var sc = document.getElementById("pnScene"); return sc ? (sc.getAttribute("data-state") || "idle") : "idle"; }
     var api = {
       reset: function (kp) {
@@ -5202,8 +5212,9 @@ onAuthStateChanged(auth, async (user) => {
         stop(); var side = r.keeper - 1, W = kp.clientWidth, H = kp.clientHeight || 1, fly = 440, i;
         Snd.play("pDive");
         var e = show(kp, 2, 0, null, 1), hs = e.offsetWidth * (e.naturalHeight / (e.naturalWidth || 1)) / H;
-        var dy = Math.max(0, BY[row] / 100 - hs / 2) * H * 0.85;
-        var tf = "translate(" + (side * W * 0.22).toFixed(1) + "px," + (-dy).toFixed(1) + "px) rotate(" + (side * 68) + "deg) scale(" + (side ? 1 : .94) + "," + (side ? 1 : 1.14) + ")";
+        var dy = Math.max(0, BY[row] / 100 - hs / 2) * H * 0.85, dx = side * W * 0.22;
+        var sx = side ? 1 : .94, sy = side ? 1 : 1.14, rot = side * 68;
+        var tf = "translate(" + dx.toFixed(1) + "px," + (-dy).toFixed(1) + "px) rotate(" + rot + "deg) scale(" + sx + "," + sy + ")";
         var o = { duration: fly, easing: "cubic-bezier(.2,.7,.3,1)", fill: "both" };
         e.animate([{ transform: "translate(0,0) rotate(0) scale(1)", filter: "drop-shadow(0 0 0 #7cf0)" }, { transform: tf, filter: "drop-shadow(0 0 10px #7cf) drop-shadow(0 0 22px #7cf8)" }], o);
         for (i = 1; i <= 3; i++) {
@@ -5211,10 +5222,22 @@ onAuthStateChanged(auth, async (user) => {
           g.animate([{ transform: "translate(0,0) rotate(0) scale(1)" }, { transform: tf }], { duration: fly, easing: o.easing, fill: "both", delay: i * 50 });
         }
         later(function () {
-          if (r.goal) { Snd.play("pLand"); ring(kp, X[side + 1], 0, "#e8c9a0"); show(kp, side ? 8 : 1, side, null); return; }
-          var k = side ? [4, 13, 16][row] : [3, 11, 18][row];
-          show(kp, k, side, BY[row]); ring(kp, X[side + 1], BY[row], "#9ff");
-          later(function () { Snd.play("pLand"); ring(kp, X[side + 1], 0, "#e8c9a0"); show(kp, side ? [5, 6, 7][row] : [9, 12, 17][row], side, null); }, 260);
+          if (r.goal) {
+            // raté : il retombe au sol, bras tendus, le ballon passe
+            Array.prototype.forEach.call(kp.querySelectorAll(".ghost"), function (n) { n.parentNode.removeChild(n); });
+            ring(kp, X[side + 1], BY[row], "#f66");
+            e.animate([{ transform: tf }, { transform: "translate(" + dx.toFixed(1) + "px,0) rotate(" + rot + "deg) scale(1.04,.96)" }], { duration: 320, easing: "cubic-bezier(.5,0,1,.7)", fill: "both" });
+            later(function () { Snd.play("pLand"); ring(kp, X[side + 1], 0, "#e8c9a0"); }, 320);
+            return;
+          }
+          // arrêt : la pose de capture avec le ballon dans les gants, bien visible, puis il retombe
+          var pool = POOL[row][side ? 0 : 1], k = pool[Math.floor(Math.random() * pool.length)];
+          var c = show(kp, k, side, BY[row]); ring(kp, X[side + 1], BY[row], "#9ff"); ring(kp, X[side + 1], BY[row], "#fff");
+          later(function () {
+            var px = parseFloat(c.style.bottom) / 100 * H;
+            if (px > 1 && c.animate) c.animate([{ transform: "translate(0,0)" }, { transform: "translate(0," + px.toFixed(1) + "px) scale(1.06,.94)" }], { duration: 300, easing: "cubic-bezier(.5,0,1,.7)", fill: "forwards" });
+            later(function () { Snd.play("pLand"); ring(kp, X[side + 1], 0, "#e8c9a0"); }, 300);
+          }, 560);
         }, fly);
       },
       react: function (kp, goal) {
@@ -5232,6 +5255,7 @@ onAuthStateChanged(auth, async (user) => {
   })();
 
   function penReset(keep) {
+    KK.reset();
     var b = $("pnBall"), k = $("pnKeeper"), a = $("pnAim"), m = $("pnMsg");
     if (b.getAnimations) b.getAnimations().forEach(function (x) { x.cancel(); });
     if (!keep) { k.className = "pn-keeper"; k.style.removeProperty("--ky"); KP.reset(k); b.style.opacity = ""; } a.classList.remove("on"); m.className = "pn-msg";
@@ -5257,18 +5281,70 @@ onAuthStateChanged(auth, async (user) => {
       (function (e) { setTimeout(function () { if (e.parentNode) e.parentNode.removeChild(e); }, 750); })(sp);
     }
   }
-  function penKick(z, r, row) {
+  /* ===== Tireur : course d'élan + frappe ===== */
+  var KK = (function () {
+    var el = null, T = [];
+    var SVG = '<svg viewBox="0 0 60 92" xmlns="http://www.w3.org/2000/svg"><ellipse cx="30" cy="89" rx="16" ry="3" fill="#0006"/>' +
+      '<g class="kr" style="transform-origin:38px 54px"><rect x="34" y="54" width="9" height="24" rx="3" fill="#e0ac69"/><rect x="34" y="72" width="9" height="12" fill="#fff"/><rect x="33" y="82" width="12" height="7" rx="3" fill="#111"/></g>' +
+      '<g class="kl" style="transform-origin:22px 54px"><rect x="17" y="54" width="9" height="24" rx="3" fill="#e0ac69"/><rect x="17" y="72" width="9" height="12" fill="#fff"/><rect x="15" y="82" width="12" height="7" rx="3" fill="#111"/></g>' +
+      '<rect x="15" y="42" width="30" height="18" rx="4" fill="#1e3a8a"/>' +
+      '<g class="kb" style="transform-origin:30px 44px"><rect x="7" y="22" width="9" height="20" rx="4" fill="#e0ac69"/><rect x="44" y="22" width="9" height="20" rx="4" fill="#e0ac69"/><rect x="12" y="17" width="36" height="29" rx="8" fill="#e53935"/><text x="30" y="37" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" font-family="Arial,sans-serif">10</text><circle cx="30" cy="10" r="9" fill="#2b1b10"/></g></svg>';
+    function build() { var sc = document.getElementById("pnScene"); if (el || !sc) return !!el; el = document.createElement("div"); el.className = "pn-kicker"; el.innerHTML = SVG; sc.appendChild(el); return true; }
+    function part(c) { return el.querySelector("." + c); }
+    function cancel() { while (T.length) clearTimeout(T.pop()); if (!el) return; [el, part("kl"), part("kr"), part("kb")].forEach(function (n) { if (n.getAnimations) n.getAnimations().forEach(function (x) { x.cancel(); }); }); }
+    function later(f, ms) { T.push(setTimeout(f, ms)); }
+    function idle() { if (el && el.animate) el.animate([{ transform: "translateY(0)" }, { transform: "translateY(-2px)" }], { duration: 900, iterations: Infinity, direction: "alternate", easing: "ease-in-out" }); }
+    return {
+      reset: function () { if (!build()) return; cancel(); idle(); },
+      run: function () {
+        return new Promise(function (done) {
+          if (!build() || !el.animate) { done(); return; }
+          cancel(); var kl = part("kl"), kr = part("kr"), kb = part("kb"), F = { fill: "forwards" };
+          el.animate([{ transform: "translateX(30px)" }, { transform: "translateX(0)" }], { duration: 240, easing: "ease-out", fill: "forwards" });
+          el.animate([{ transform: "translateY(0)" }, { transform: "translateY(-5px)" }, { transform: "translateY(0)" }, { transform: "translateY(-5px)" }, { transform: "translateY(0)" }], { duration: 240, composite: "add" });
+          kr.animate([{ transform: "rotate(28deg)" }, { transform: "rotate(-28deg)" }, { transform: "rotate(14deg)" }], { duration: 240, fill: "forwards" });
+          kl.animate([{ transform: "rotate(-28deg)" }, { transform: "rotate(28deg)" }, { transform: "rotate(-45deg)" }], { duration: 240, fill: "forwards" });
+          later(function () {
+            kl.animate([{ transform: "rotate(-45deg)" }, { transform: "rotate(78deg)" }], { duration: 100, easing: "cubic-bezier(.5,0,1,.6)", fill: "forwards" });
+            kb.animate([{ transform: "rotate(0)" }, { transform: "rotate(-8deg)" }], { duration: 100, fill: "forwards" });
+          }, 240);
+          later(function () { done(); }, 330);
+          later(function () { kl.animate([{ transform: "rotate(78deg)" }, { transform: "rotate(0)" }], { duration: 400, easing: "ease-out", fill: "forwards" }); kb.animate([{ transform: "rotate(-8deg)" }, { transform: "rotate(0)" }], { duration: 400, fill: "forwards" }); }, 900);
+        });
+      }
+    };
+  })();
+  try { KK.reset(); } catch (_) {}
+  // gerbe d'emojis (but : confettis dans le filet)
+  function pnBurst(sc, cx, cy, list, n) {
+    for (var i = 0; i < n; i++) (function (i) {
+      var f = document.createElement("i"), a = i / n * 6.283 + Math.random() * .4, d = 40 + Math.random() * 50; f.className = "pn-fx"; f.textContent = list[i % list.length]; f.style.left = cx + "px"; f.style.top = cy + "px"; sc.appendChild(f);
+      if (f.animate) f.animate([{ transform: "translate(0,0) scale(.4)", opacity: 1 }, { transform: "translate(" + (Math.cos(a) * d).toFixed(0) + "px," + (Math.sin(a) * d - 20).toFixed(0) + "px) scale(1.3) rotate(" + (Math.random() * 360).toFixed(0) + "deg)", opacity: 0 }], { duration: 900, easing: "ease-out", fill: "forwards" });
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 950);
+    })(i);
+  }
+  function penKick(z, r, row) { return KK.run().then(function () { return penKick2(z, r, row); }); }
+  function penKick2(z, r, row) {
     return new Promise(function (done) {
       var sc = $("pnScene"), ball = $("pnBall"), kp = $("pnKeeper"), net = $("pnNet"), W_ = sc.clientWidth, H_ = sc.clientHeight;
       var tx = ([0.27, 0.5, 0.73][z] - 0.5) * W_, ty = ([0.27, 0.42, 0.55][row || 0] + (Math.random() * 0.04 - 0.02) - 0.86) * H_, dur = REDUCED ? 220 : 560;
       Snd.play("pKick");
       if (ball.animate) {
         ball.animate([
-          { transform: "translate(-50%,-50%) scale(1)", offset: 0 },
+          { transform: "translate(-50%,-50%) scale(1.3)", offset: 0 },
           { transform: "translate(calc(-50% + " + (tx * 0.5).toFixed(1) + "px),calc(-50% + " + (ty * 0.62 - 16).toFixed(1) + "px)) scale(.66)", offset: 0.55 },
           { transform: "translate(calc(-50% + " + tx.toFixed(1) + "px),calc(-50% + " + ty.toFixed(1) + "px)) scale(.42)", offset: 1 }
         ], { duration: dur, easing: "cubic-bezier(.25,.6,.35,1)", fill: "forwards" });
-        if (ball.firstElementChild.animate && !REDUCED) ball.firstElementChild.animate([{ transform: "rotate(0)" }, { transform: "rotate(" + (z === 0 ? -540 : 540) + "deg)" }], { duration: dur, fill: "forwards" });
+        if (ball.firstElementChild.animate) ball.firstElementChild.animate([{ transform: "rotate(0)" }, { transform: "rotate(" + (z === 0 ? -1440 : 1440) + "deg)" }], { duration: dur, easing: "linear", fill: "forwards" });
+        for (var gi = 1; gi <= 4; gi++) {
+          var gb = ball.cloneNode(true); gb.removeAttribute("id"); gb.className = "pn-ball pn-ghost"; gb.style.opacity = (0.5 - 0.1 * gi); sc.insertBefore(gb, ball);
+          gb.animate([
+            { transform: "translate(-50%,-50%) scale(1)", offset: 0 },
+            { transform: "translate(calc(-50% + " + (tx * 0.5).toFixed(1) + "px),calc(-50% + " + (ty * 0.62 - 16).toFixed(1) + "px)) scale(.66)", offset: 0.55 },
+            { transform: "translate(calc(-50% + " + tx.toFixed(1) + "px),calc(-50% + " + ty.toFixed(1) + "px)) scale(.42)", offset: 1 }
+          ], { duration: dur, delay: gi * 34, easing: "cubic-bezier(.25,.6,.35,1)", fill: "both" });
+          (function (n) { setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, dur + 260); })(gb);
+        }
       }
       setTimeout(function () {
         // hauteur du plongeon : sur un arrêt le gardien va exactement à la case touchée ; sur un but il plonge à côté
@@ -5276,14 +5352,14 @@ onAuthStateChanged(auth, async (user) => {
         kp.style.setProperty("--ky", ["-38%", "-14%", "6%"][kr]);
         kp.className = "pn-keeper k" + r.keeper; KP.play(kp, r, kr);
       }, REDUCED ? 0 : 110);
-      setTimeout(function () { kp.classList.add(r.goal ? "sad" : "joy"); KP.react(kp, r.goal); }, dur + (REDUCED ? 0 : 420));
+      setTimeout(function () { kp.classList.add(r.goal ? "sad" : "joy"); KP.react(kp, r.goal); }, dur + (r.goal ? 560 : 900));
       setTimeout(function () {
         try { penFx(kp, sc, r, z, row); } catch (_) {}
         var m = $("pnMsg");
         if (r.goal) {
           net.classList.remove("hit"); void net.offsetWidth; net.classList.add("hit");
           m.textContent = "BUT !"; m.className = "pn-msg win"; void m.offsetWidth; m.className = "pn-msg win show";
-          Snd.play("pGoal"); buzz([25, 30, 50]);
+          Snd.play("pGoal"); buzz([25, 30, 50]); pnBurst(sc, W_ / 2 + tx, H_ * 0.86 + ty, ["⚽", "✨", "⭐", "🎉"], 14);
         } else {
           if (ball.animate) ball.animate([
             { transform: "translate(calc(-50% + " + tx.toFixed(1) + "px),calc(-50% + " + ty.toFixed(1) + "px)) scale(.42)" },
@@ -5294,7 +5370,7 @@ onAuthStateChanged(auth, async (user) => {
           sc.classList.remove("shake"); void sc.offsetWidth; sc.classList.add("shake");
         }
       }, dur);
-      setTimeout(function () { done(); }, dur + (REDUCED ? 300 : 1050));
+      setTimeout(function () { done(); }, dur + (r.goal ? 1050 : 1600));
     });
   }
   function penShoot(z, row) {
